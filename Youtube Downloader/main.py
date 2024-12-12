@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
-from pytube import YouTube
+from yt_dlp import YoutubeDL
 import os
 import threading
 
@@ -8,7 +8,7 @@ class DescargadorYoutube:
     def __init__(self, root):
         self.root = root
         self.root.title("Descargador de YouTube")
-        self.root.geometry("600x400")
+        self.root.geometry("1200x600")
         self.root.configure(bg="#f0f0f0")
 
         # Marco principal
@@ -59,43 +59,31 @@ class DescargadorYoutube:
 
     def descargar_video(self, url):
         try:
-            yt = YouTube(url)
-            self.actualizar_info(f"Título: {yt.title}\nVistas: {yt.views}\n")
-            
-            if not os.path.exists('descargas'):
-                os.makedirs('descargas')
-
             formato_seleccionado = self.formato.get()
             
-            if formato_seleccionado == 'Video MP4 (Alta Calidad)':
-                stream = yt.streams.get_highest_resolution()
-            elif formato_seleccionado == 'Video MP4 (720p)':
-                stream = yt.streams.filter(res='720p', file_extension='mp4').first()
-            elif formato_seleccionado == 'Video MP4 (480p)':
-                stream = yt.streams.filter(res='480p', file_extension='mp4').first()
-            elif formato_seleccionado == 'Solo Audio (MP3)':
-                stream = yt.streams.filter(only_audio=True).first()
-                # Descargar como MP4 y convertir a MP3
-                archivo_mp4 = stream.download('descargas')
-                base, ext = os.path.splitext(archivo_mp4)
-                archivo_mp3 = base + '.mp3'
-                os.rename(archivo_mp4, archivo_mp3)
-                self.actualizar_info("¡Descarga completada exitosamente!")
-                messagebox.showinfo("Éxito", "Audio descargado correctamente")
-                return
-            elif formato_seleccionado == 'Solo Audio (MP4)':
-                stream = yt.streams.filter(only_audio=True).first()
+            opciones = {
+                'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+                'outtmpl': 'descargas/%(title)s.%(ext)s',
+            }
             
-            self.actualizar_info("Descargando...\n")
-            stream.download('descargas')
+            if 'Solo Audio' in formato_seleccionado:
+                opciones['format'] = 'bestaudio[ext=m4a]'
+                if 'MP3' in formato_seleccionado:
+                    opciones['postprocessors'] = [{
+                        'key': 'FFmpegExtractAudio',
+                        'preferredcodec': 'mp3',
+                    }]
             
+            with YoutubeDL(opciones) as ydl:
+                info = ydl.extract_info(url, download=True)
+                self.actualizar_info(f"Título: {info.get('title', 'Desconocido')}\n")
+                
             self.actualizar_info("¡Descarga completada exitosamente!")
             messagebox.showinfo("Éxito", "Archivo descargado correctamente")
-            
+                
         except Exception as e:
             self.actualizar_info(f"Error: {str(e)}")
             messagebox.showerror("Error", str(e))
-        
         finally:
             self.root.after(0, self.restaurar_interfaz)
 
@@ -105,6 +93,12 @@ class DescargadorYoutube:
     def restaurar_interfaz(self):
         self.boton_descarga.configure(state='normal')
         self.progreso.stop()
+
+    def on_progress(self, stream, chunk, bytes_remaining):
+        total_size = stream.filesize
+        bytes_downloaded = total_size - bytes_remaining
+        percentage = (bytes_downloaded / total_size) * 100
+        self.actualizar_info(f"Descargado: {percentage:.1f}%")
 
 if __name__ == "__main__":
     root = tk.Tk()
